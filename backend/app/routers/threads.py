@@ -10,7 +10,7 @@ from .. import ai
 from ..config import settings
 from ..database import get_session
 from ..demo_data import OWNER_NAME
-from ..models import MailAccount, Message, Thread, User
+from ..models import Attachment, MailAccount, Message, Thread, User
 from ..providers import AuthError, FlagChange, ProviderError, get_provider
 from ..ratelimit import SlidingWindowLimiter
 from ..schemas import (
@@ -107,7 +107,10 @@ def _messages(thread: Thread, session: Session) -> list[Message]:
 def get_thread(thread_id: int, user: User = Depends(get_current_user), session: Session = Depends(get_session)) -> ThreadDetail:
     thread = _owned_thread(thread_id, user, session)
     messages = _messages(thread, session)
-    return ThreadDetail(**ThreadOut.of(thread).model_dump(), messages=[MessageOut.of(m) for m in messages])
+    files: dict[int, list[Attachment]] = {}
+    for a in session.exec(select(Attachment).where(Attachment.message_id.in_([m.id for m in messages])).order_by(Attachment.id)):
+        files.setdefault(a.message_id, []).append(a)
+    return ThreadDetail(**ThreadOut.of(thread).model_dump(), messages=[MessageOut.of(m, files.get(m.id, [])) for m in messages])
 
 
 def change_thread(session: Session, thread: Thread, change: FlagChange) -> None:

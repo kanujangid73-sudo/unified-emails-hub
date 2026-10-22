@@ -75,6 +75,7 @@ class Thread(SQLModel, table=True):
     participants: str = Field(default="", max_length=500)
     message_count: int = 0
     unread_count: int = 0
+    attachment_count: int = 0
     is_starred: bool = False
     is_archived: bool = False
     last_message_at: datetime = Field(default_factory=utcnow, sa_column=_timestamp(nullable=False))
@@ -110,3 +111,18 @@ class Message(SQLModel, table=True):
     # The List-Unsubscribe header (RFC 2369): how to leave a mailing list.
     list_unsubscribe: str = Field(default="", sa_column=Column(Text, nullable=False, server_default=""))
     sent_at: datetime = Field(sa_column=_timestamp(nullable=False))
+
+
+class Attachment(SQLModel, table=True):
+    """What a message has attached. Content is downloaded from the provider when asked for,
+    except for copies the hub keeps itself (`data`), such as mail sent over SMTP."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    message_id: int = Field(foreign_key="message.id", index=True)
+    filename: str = Field(max_length=255)
+    mime_type: str = Field(default="application/octet-stream", max_length=127)
+    size: int = 0
+    ref: str = Field(default="", sa_column=Column(Text, nullable=False, server_default=""))
+    content_id: str = Field(default="", max_length=255)
+    inline: bool = False
+    data: bytes | None = None

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { avatarColor, fullDate, initials, linkify, listDate } from "../lib/format.js";
+import { AttachmentList } from "./Attachments.jsx";
 import EmailFrame from "./EmailFrame.jsx";
 import Icon from "./Icon.jsx";
 import ReplyBox from "./ReplyBox.jsx";
@@ -20,7 +21,7 @@ function PlainBody({ text }) {
   );
 }
 
-function MessageCard({ message, expanded, onToggle }) {
+function MessageCard({ message, expanded, onToggle, token, onError }) {
   const name = message.is_sent ? "me" : message.from_name || message.from_email;
   return (
     <article className={`message ${expanded ? "expanded" : ""}`}>
@@ -44,6 +45,7 @@ function MessageCard({ message, expanded, onToggle }) {
         </time>
       </header>
       {expanded && (message.body_html ? <EmailFrame html={message.body_html} /> : <PlainBody text={message.body_text} />)}
+      {expanded && <AttachmentList attachments={message.attachments || []} token={token} onError={onError} />}
     </article>
   );
 }
@@ -81,7 +83,7 @@ function SummaryCard({ state, aiProvider, onRefresh }) {
   );
 }
 
-export default function ThreadView({ thread, account, loading, onBack, onUpdate, call, replying, onReplying, onReplied, aiProvider, hidden }) {
+export default function ThreadView({ thread, account, loading, onBack, onUpdate, call, replying, onReplying, onReplied, aiProvider, hidden, token, onError }) {
   // The latest message and any unread ones start open; older read ones are folded, as in Gmail.
   const [open, setOpen] = useState(new Set());
   const [summary, setSummary] = useState(null);
@@ -178,10 +180,10 @@ export default function ThreadView({ thread, account, loading, onBack, onUpdate,
         )}
         {summary && <SummaryCard state={summary} aiProvider={aiProvider} onRefresh={() => summarize(true)} />}
         {thread.messages.map((m) => (
-          <MessageCard key={m.id} message={m} expanded={open.has(m.id)} onToggle={() => toggle(m.id)} />
+          <MessageCard key={m.id} message={m} expanded={open.has(m.id)} onToggle={() => toggle(m.id)} token={token} onError={onError} />
         ))}
         {replying ? (
-          <ReplyBox call={call} thread={thread} account={account} aiProvider={aiProvider} onCancel={() => onReplying(false)} onSent={onReplied} />
+          <ReplyBox call={call} thread={thread} account={account} aiProvider={aiProvider} onCancel={() => onReplying(false)} onSent={onReplied} onError={onError} />
         ) : (
           <button className="btn reply-button" onClick={() => onReplying(true)} disabled={account?.needs_reauth}>
             <Icon name="reply" size={16} /> Reply

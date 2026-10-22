@@ -6,7 +6,7 @@ Words must all appear in one message of the conversation (subject, sender or bod
 Postgres this uses the full-text index (migration 0002) with prefix matching, so "invo"
 finds "invoice". SQLite, used in development, falls back to substring matching.
 
-Operators: from:  to:  is:unread  is:read  is:starred  before:YYYY-MM-DD  after:YYYY-MM-DD
+Operators: from:  to:  is:unread  is:read  is:starred  has:attachment  before:YYYY-MM-DD  after:YYYY-MM-DD
 """
 
 import re
@@ -26,6 +26,7 @@ class ParsedQuery:
     recipients: list[str] = field(default_factory=list)
     unread: bool | None = None
     starred: bool | None = None
+    has_attachment: bool = False
     after: datetime | None = None
     before: datetime | None = None
 
@@ -46,7 +47,7 @@ def parse_query(q: str) -> ParsedQuery:
     for token in tokens:
         key, sep, value = token.partition(":")
         key = key.lower()
-        if sep and value and key in {"from", "to", "is", "before", "after"}:
+        if sep and value and key in {"from", "to", "is", "has", "before", "after"}:
             value_l = value.lower()
             if key == "from":
                 parsed.senders.append(value)
@@ -56,6 +57,8 @@ def parse_query(q: str) -> ParsedQuery:
                 parsed.unread = value_l == "unread"
             elif key == "is" and value_l == "starred":
                 parsed.starred = True
+            elif key == "has" and value_l in {"attachment", "attachments", "file"}:
+                parsed.has_attachment = True
             elif key in {"before", "after"} and (day := _day(value)):
                 if key == "after":
                     parsed.after = day
@@ -114,6 +117,8 @@ def filter_threads(query, q: str, dialect: str):
         query = query.where(Thread.unread_count > 0 if parsed.unread else Thread.unread_count == 0)
     if parsed.starred:
         query = query.where(Thread.is_starred == True)  # noqa: E712
+    if parsed.has_attachment:
+        query = query.where(Thread.attachment_count > 0)
     if parsed.after:
         query = query.where(Thread.last_message_at >= parsed.after)
     if parsed.before:

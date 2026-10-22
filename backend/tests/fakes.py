@@ -46,10 +46,19 @@ class FakeTokens:
 
 
 def gmail_message(mid, thread, labels, subject="Hello", body="Hi there", html=None, sender="Priya Sharma <priya@example.net>", ts=1_760_000_000_000):
-    parts = [{"mimeType": "text/plain", "headers": [{"name": "Content-Type", "value": "text/plain; charset=UTF-8"}], "body": {"data": b64(body)}}]
+    parts = [{"partId": "0", "mimeType": "text/plain", "headers": [{"name": "Content-Type", "value": "text/plain; charset=UTF-8"}], "body": {"data": b64(body)}}]
     if html:
-        parts.append({"mimeType": "text/html", "body": {"data": b64(html)}})
-    parts.append({"mimeType": "application/pdf", "filename": "invoice.pdf", "body": {"attachmentId": "att-1", "size": 1000}})
+        parts.append({"partId": "1", "mimeType": "text/html", "body": {"data": b64(html)}})
+    parts.append(
+        {
+            "partId": "2",
+            "mimeType": "application/pdf",
+            "filename": "invoice.pdf",
+            "headers": [{"name": "Content-Disposition", "value": 'attachment; filename="invoice.pdf"'}],
+            # Gmail hands out a different attachmentId each time a message is fetched.
+            "body": {"attachmentId": f"att-{mid}-{len(parts)}", "size": 17},
+        }
+    )
     return {
         "id": mid,
         "threadId": thread,
@@ -115,6 +124,10 @@ class FakeGmail:
         if match := re.fullmatch(r"/messages/([\w-]+)", path):
             message = self.messages.get(match.group(1))
             return httpx.Response(200, json=message) if message else httpx.Response(404, json={"error": {"message": "not found"}})
+        if match := re.fullmatch(r"/messages/([\w-]+)/attachments/([\w-]+)", path):
+            if match.group(1) not in self.messages:
+                return httpx.Response(404, json={"error": {"message": "not found"}})
+            return httpx.Response(200, json={"size": 17, "data": b64("%PDF-1.4 invoice")})
         if path == "/history":
             if self.history_pages is None:
                 return httpx.Response(404, json={"error": {"message": "history expired"}})
@@ -125,8 +138,9 @@ class FakeGmail:
         return httpx.Response(500, json={"error": {"message": f"unexpected {request.method} {path}"}})
 
 
-def graph_message(mid, conversation, folder_id, subject="Status update", read=False, flagged=False, html=True, sender=("Jordan Blake", "jordan@northwind.example")):
+def graph_message(mid, conversation, folder_id, subject="Status update", read=False, flagged=False, html=True, sender=("Jordan Blake", "jordan@northwind.example"), files=False):
     return {
+        "hasAttachments": files,
         "id": mid,
         "conversationId": conversation,
         "subject": subject,
@@ -186,11 +200,30 @@ class FakeGraph:
                 return httpx.Response(200, json={})
             message = self.messages.get(match.group(1))
             return httpx.Response(200, json=message) if message else httpx.Response(404, json={})
+        if match := re.fullmatch(r"/messages/([\w-]+)/attachments", path):
+            if request.method == "POST":
+                self.posts.append((path, json.loads(request.content)))
+                return httpx.Response(201, json={"id": "new-att"})
+            return httpx.Response(
+                200,
+                json={
+                    "value": [
+                        {"@odata.type": "#microsoft.graph.fileAttachment", "id": "A1", "name": "report.xlsx", "contentType": "application/vnd.ms-excel", "size": 2048, "isInline": False},
+                        {"@odata.type": "#microsoft.graph.fileAttachment", "id": "A2", "name": "logo.png", "contentType": "image/png", "size": 300, "isInline": True},
+                        {"@odata.type": "#microsoft.graph.referenceAttachment", "id": "A3", "name": "Shared doc", "contentType": "", "size": 0, "isInline": False},
+                    ]
+                },
+            )
+        if match := re.fullmatch(r"/messages/([\w-]+)/attachments/([\w-]+)/\$value", path):
+            return httpx.Response(200, content=b"spreadsheet bytes") if match.group(2) == "A1" else httpx.Response(404, json={})
+        if match := re.fullmatch(r"/messages/([\w-]+)/createReply", path):
+            self.posts.append((path, json.loads(request.content)))
+            return httpx.Response(201, json={"id": "draft-1"})
         if match := re.fullmatch(r"/messages/([\w-]+)/move", path):
             self.moves.append((match.group(1), json.loads(request.content)["destinationId"]))
             return httpx.Response(201, json={})
         if request.method == "POST":
-            self.posts.append((path, json.loads(request.content)))
+            self.posts.append((path, json.loads(request.content) if request.content else {}))
             return httpx.Response(202)
         return httpx.Response(500, json={"error": {"message": f"unexpected {request.method} {path}"}})
 
@@ -204,7 +237,7 @@ class FakeGraph:
         return httpx.Response(200, json=body)
 
 
-def rfc822(subject, sender="Neha Kapoor <neha@oldmail.example>", body="Hello!", msgid="<1@oldmail.example>", references="", in_reply_to="", html=None) -> bytes:
+def rfc822(subject, sender="Neha Kapoor <neha@oldmail.example>", body="Hello!", msgid="<1@oldmail.example>", references="", in_reply_to="", html=None, attachment=None) -> bytes:
     msg = EmailMessage()
     msg["From"] = sender
     msg["To"] = "me@oldmail.example"
@@ -218,6 +251,10 @@ def rfc822(subject, sender="Neha Kapoor <neha@oldmail.example>", body="Hello!", 
     msg.set_content(body)
     if html:
         msg.add_alternative(html, subtype="html")
+    if attachment:
+        name, mime, data = attachment
+        maintype, subtype = mime.split("/")
+        msg.add_attachment(data, maintype=maintype, subtype=subtype, filename=name)
     return msg.as_bytes()
 
 

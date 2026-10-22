@@ -11,7 +11,7 @@ import uuid
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
-from .base import Address, FlagChange, MailProvider, OutgoingMessage, ProviderError, RemoteMessage, SyncBatch
+from .base import Address, FlagChange, MailProvider, OutgoingMessage, ProviderError, RemoteAttachment, RemoteMessage, SyncBatch
 
 
 def _utc(value: datetime) -> datetime:
@@ -55,6 +55,14 @@ class DemoProvider(MailProvider):
         # The hub keeps the change in its own database, as it does for every provider.
         return None
 
+    def fetch_attachment(self, message_remote_id: str, ref: str) -> bytes:
+        for message in self.mailbox:
+            if message.remote_id == message_remote_id:
+                for attachment in message.attachments:
+                    if attachment.ref == ref and attachment.data is not None:
+                        return attachment.data
+        raise ProviderError("That attachment doesn't exist")
+
     def send(self, message: OutgoingMessage) -> RemoteMessage:
         key = uuid.uuid4().hex
         return RemoteMessage(
@@ -68,4 +76,8 @@ class DemoProvider(MailProvider):
             body_text=message.body_text,
             is_read=True,
             message_id_header=f"<{key}@demo.example>",
+            attachments=tuple(
+                RemoteAttachment(filename=a.filename, mime_type=a.mime_type, size=len(a.data), ref=str(i), data=a.data)
+                for i, a in enumerate(message.attachments)
+            ),
         )

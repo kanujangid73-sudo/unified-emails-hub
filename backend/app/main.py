@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from . import scheduler
 from .config import settings
 from .database import init_db
-from .routers import accounts, auth, insights, messages, oauth, threads
+from .routers import accounts, attachments, auth, insights, messages, oauth, threads
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s:     %(message)s")
 
@@ -48,6 +48,7 @@ app.include_router(oauth.router)
 app.include_router(threads.router)
 app.include_router(messages.router)
 app.include_router(insights.router)
+app.include_router(attachments.router)
 
 
 @app.get("/", include_in_schema=False)

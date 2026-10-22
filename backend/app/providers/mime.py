@@ -9,7 +9,7 @@ from email.message import EmailMessage
 from email.parser import BytesParser
 from email.utils import formatdate, getaddresses, make_msgid, parsedate_to_datetime
 
-from .base import Address, OutgoingMessage
+from .base import Address, OutgoingMessage, RemoteAttachment
 
 # Bodies larger than this are cut, so one huge message can't bloat the database.
 MAX_BODY_CHARS = 500_000
@@ -28,6 +28,7 @@ class ParsedMessage:
     in_reply_to: str
     references: str
     list_unsubscribe: str = ""
+    attachments: tuple[RemoteAttachment, ...] = ()
 
 
 def addresses(value: str | None) -> tuple[Address, ...]:
@@ -53,6 +54,42 @@ def _content(part) -> str:
     return text[:MAX_BODY_CHARS] if isinstance(text, str) else ""
 
 
+def attachment_parts(msg) -> list:
+    """The parts of a message that are files: attachments, and inline images with a name."""
+    found = []
+    for part in msg.walk():
+        if part.is_multipart() or part is msg and not part.get_filename():
+            continue
+        disposition = part.get_content_disposition()
+        if disposition == "attachment" or (part.get_filename() and part.get_content_maintype() != "text"):
+            found.append(part)
+    return found
+
+
+def _attachments(msg) -> tuple[RemoteAttachment, ...]:
+    result = []
+    for index, part in enumerate(attachment_parts(msg)):
+        payload = part.get_payload(decode=True) or b""
+        result.append(
+            RemoteAttachment(
+                filename=(part.get_filename() or f"attachment-{index + 1}")[:255],
+                mime_type=part.get_content_type(),
+                size=len(payload),
+                ref=str(index),
+                content_id=str(part.get("Content-ID", "")).strip("<> ")[:255],
+                inline=part.get_content_disposition() == "inline",
+            )
+        )
+    return tuple(result)
+
+
+def attachment_bytes(raw: bytes, ref: str) -> bytes | None:
+    """The content of attachment number `ref` (as numbered by _attachments) in a raw message."""
+    parts = attachment_parts(BytesParser(policy=policy.default).parsebytes(raw))
+    index = int(ref) if ref.isdigit() else -1
+    return parts[index].get_payload(decode=True) if 0 <= index < len(parts) else None
+
+
 def parse_message(raw: bytes, fallback_date: datetime) -> ParsedMessage:
     msg = BytesParser(policy=policy.default).parsebytes(raw)
     text_part = msg.get_body(preferencelist=("plain",))
@@ -70,6 +107,7 @@ def parse_message(raw: bytes, fallback_date: datetime) -> ParsedMessage:
         in_reply_to=str(msg.get("In-Reply-To", "")).strip(),
         references=" ".join(str(msg.get("References", "")).split()),
         list_unsubscribe=" ".join(str(msg.get("List-Unsubscribe", "")).split()),
+        attachments=_attachments(msg),
     )
 
 
@@ -99,6 +137,11 @@ def build_message(out: OutgoingMessage, domain: str | None = None) -> EmailMessa
         msg["In-Reply-To"] = out.reply_to.message_id_header
         msg["References"] = " ".join(f"{out.reply_to.references} {out.reply_to.message_id_header}".split())
     msg.set_content(out.body_text)
+    for attachment in out.attachments:
+        maintype, _, subtype = attachment.mime_type.partition("/")
+        if not subtype:
+            maintype, subtype = "application", "octet-stream"
+        msg.add_attachment(attachment.data, maintype=maintype, subtype=subtype, filename=attachment.filename)
     return msg
 
 

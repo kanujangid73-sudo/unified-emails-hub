@@ -20,11 +20,11 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from html import unescape
 
-from sqlmodel import Session, delete, select
+from sqlmodel import Session, delete, func, select
 
 from .config import settings
 from .insights import analyze
-from .models import MailAccount, Message, Thread, utcnow
+from .models import Attachment, MailAccount, Message, Thread, utcnow
 from .providers import AuthError, MailProvider, ProviderError, RemoteMessage, SyncBatch, get_provider
 
 logger = logging.getLogger("mailhub.sync")
@@ -70,7 +70,37 @@ def make_snippet(text: str, html: str = "", length: int = 200) -> str:
     return flat if len(flat) <= length else flat[: length - 1].rstrip() + "…"
 
 
-def _store_message(session: Session, account: MailAccount, thread: Thread, remote: RemoteMessage, existing: Message | None) -> None:
+def delete_account_mail(session: Session, account_ids: list[int]) -> None:
+    """Remove everything the hub stored for some accounts (children before parents)."""
+    if not account_ids:
+        return
+    message_ids = select(Message.id).where(Message.account_id.in_(account_ids))
+    session.exec(delete(Attachment).where(Attachment.message_id.in_(message_ids)))
+    session.exec(delete(Message).where(Message.account_id.in_(account_ids)))
+    session.exec(delete(Thread).where(Thread.account_id.in_(account_ids)))
+
+
+def _store_attachments(session: Session, stored: dict[str, tuple[Message, RemoteMessage]]) -> None:
+    """Replace the attachment rows of the messages in a batch with what the provider reports."""
+    ids = [m.id for m, _ in stored.values()]
+    session.exec(delete(Attachment).where(Attachment.message_id.in_(ids)))
+    for message, remote in stored.values():
+        for a in remote.attachments:
+            session.add(
+                Attachment(
+                    message_id=message.id,
+                    filename=a.filename[:255],
+                    mime_type=(a.mime_type or "application/octet-stream")[:127],
+                    size=a.size,
+                    ref=a.ref,
+                    content_id=a.content_id[:255],
+                    inline=a.inline,
+                    data=a.data,
+                )
+            )
+
+
+def _store_message(session: Session, account: MailAccount, thread: Thread, remote: RemoteMessage, existing: Message | None) -> Message:
     message = existing or Message(account_id=account.id, thread_id=thread.id, remote_id=remote.remote_id, sent_at=remote.sent_at)
     message.thread_id = thread.id
     message.from_name = remote.sender.name[:200]
@@ -89,6 +119,7 @@ def _store_message(session: Session, account: MailAccount, thread: Thread, remot
     message.list_unsubscribe = remote.list_unsubscribe
     message.sent_at = as_utc(remote.sent_at)
     session.add(message)
+    return message
 
 
 def _from_owner(remote: RemoteMessage, account: MailAccount) -> bool:
@@ -103,6 +134,14 @@ def refresh_threads(session: Session, thread_ids: set[int], owner_email: str) ->
     by_thread: dict[int, list[Message]] = {}
     for message in messages:
         by_thread.setdefault(message.thread_id, []).append(message)
+    files = dict(
+        session.exec(
+            select(Message.thread_id, func.count(Attachment.id))
+            .join(Attachment, Attachment.message_id == Message.id)
+            .where(Message.thread_id.in_(thread_ids), Attachment.inline == False)  # noqa: E712
+            .group_by(Message.thread_id)
+        ).all()
+    )
     for thread in session.exec(select(Thread).where(Thread.id.in_(thread_ids))).all():
         items = by_thread.get(thread.id, [])
         if not items:
@@ -119,6 +158,7 @@ def refresh_threads(session: Session, thread_ids: set[int], owner_email: str) ->
         thread.participants = ", ".join(names)[:500]
         thread.message_count = len(items)
         thread.unread_count = sum(not m.is_read for m in items)
+        thread.attachment_count = files.get(thread.id, 0)
         thread.is_starred = any(m.is_starred for m in items)
         thread.last_message_at = as_utc(latest.sent_at)
         analyze(thread, items)
@@ -128,8 +168,7 @@ def refresh_threads(session: Session, thread_ids: set[int], owner_email: str) ->
 def apply_batch(session: Session, account: MailAccount, batch: SyncBatch) -> tuple[int, int, int]:
     """Store one batch of changes. Returns (new, updated, deleted) message counts."""
     if batch.reset:
-        session.exec(delete(Message).where(Message.account_id == account.id))
-        session.exec(delete(Thread).where(Thread.account_id == account.id))
+        delete_account_mail(session, [account.id])
         session.flush()
 
     touched: set[int] = set()
@@ -139,6 +178,7 @@ def apply_batch(session: Session, account: MailAccount, batch: SyncBatch) -> tup
     deleted = 0
     if batch.deleted:
         gone = session.exec(select(Message).where(Message.account_id == account.id, Message.remote_id.in_(batch.deleted))).all()
+        session.exec(delete(Attachment).where(Attachment.message_id.in_([m.id for m in gone])))
         for message in gone:
             touched.add(message.thread_id)
             session.delete(message)
@@ -163,10 +203,11 @@ def apply_batch(session: Session, account: MailAccount, batch: SyncBatch) -> tup
                 select(Message).where(Message.account_id == account.id, Message.remote_id.in_([m.remote_id for m in batch.messages]))
             ).all()
         }
+        stored: dict[str, tuple[Message, RemoteMessage]] = {}
         for remote in batch.messages:
             thread = threads[remote.thread_id]
             is_new = remote.remote_id not in existing
-            _store_message(session, account, thread, remote, existing.get(remote.remote_id))
+            stored[remote.remote_id] = (_store_message(session, account, thread, remote, existing.get(remote.remote_id)), remote)
             new += is_new
             updated += not is_new
             touched.add(thread.id)
@@ -176,6 +217,8 @@ def apply_batch(session: Session, account: MailAccount, batch: SyncBatch) -> tup
                 # Providers without archiving (IMAP): new mail brings a conversation back to the
                 # inbox, as in Gmail. Your own reply doesn't.
                 votes[thread.id].append(False)
+        session.flush()  # ids for new messages, which their attachments point to
+        _store_attachments(session, stored)
         for key in created:
             thread = threads[key]
             if not votes[thread.id]:

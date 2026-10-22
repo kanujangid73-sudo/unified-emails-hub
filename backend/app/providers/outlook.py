@@ -10,17 +10,29 @@ message's id stable across moves, so the hub can follow it. A message that disap
 a folder's delta was either moved or deleted; the adapter asks Graph which one.
 """
 
+import base64
 import json
 from datetime import datetime, timedelta, timezone
 
-from .base import Address, FlagChange, MailProvider, OutgoingMessage, RemoteFlags, RemoteMessage, SyncBatch
+from .base import (
+    Address,
+    FlagChange,
+    MailProvider,
+    OutgoingAttachment,
+    OutgoingMessage,
+    ProviderError,
+    RemoteAttachment,
+    RemoteFlags,
+    RemoteMessage,
+    SyncBatch,
+)
 from .oauth import OAuthSession
 
 API = "https://graph.microsoft.com/v1.0/me"
 FOLDERS = ("inbox", "archive", "sentitems")
 FIELDS = (
     "id,conversationId,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,"
-    "isRead,isDraft,flag,body,parentFolderId,internetMessageId"
+    "isRead,isDraft,flag,body,parentFolderId,internetMessageId,hasAttachments"
 )
 HEADERS = {"Prefer": 'IdType="ImmutableId", odata.maxpagesize=50'}
 
@@ -34,6 +46,15 @@ def _time(value: str | None) -> datetime:
     if not value:
         return datetime.now(timezone.utc)
     return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
+
+
+def _file(attachment: OutgoingAttachment) -> dict:
+    return {
+        "@odata.type": "#microsoft.graph.fileAttachment",
+        "name": attachment.filename,
+        "contentType": attachment.mime_type,
+        "contentBytes": base64.b64encode(attachment.data).decode(),
+    }
 
 
 def _recipients(addresses: tuple[Address, ...]) -> list[dict]:
@@ -62,6 +83,23 @@ class OutlookProvider(MailProvider):
                 ids[name] = res.json()["id"]
         return ids
 
+    def _attachments(self, message_id: str) -> tuple[RemoteAttachment, ...]:
+        res = self._call("GET", f"/messages/{message_id}/attachments", params={"$select": "id,name,contentType,size,isInline"})
+        if res.status_code == 404:
+            return ()
+        return tuple(
+            RemoteAttachment(
+                filename=(a.get("name") or "attachment")[:255],
+                mime_type=a.get("contentType") or "application/octet-stream",
+                size=int(a.get("size") or 0),
+                ref=a["id"],
+                inline=bool(a.get("isInline")),
+            )
+            for a in res.json().get("value", [])
+            # Links to cloud files (referenceAttachment) have no content to download.
+            if a.get("@odata.type", "#microsoft.graph.fileAttachment") != "#microsoft.graph.referenceAttachment"
+        )
+
     def _convert(self, item: dict, folder: str) -> RemoteMessage:
         body = item.get("body") or {}
         html = body.get("contentType") == "html"
@@ -79,6 +117,7 @@ class OutlookProvider(MailProvider):
             is_starred=(item.get("flag") or {}).get("flagStatus") == "flagged",
             is_archived=folder != "inbox",
             message_id_header=item.get("internetMessageId") or "",
+            attachments=self._attachments(item["id"]) if item.get("hasAttachments") else (),
         )
 
     def fetch_changes(self, cursor: str | None) -> SyncBatch:
@@ -159,10 +198,29 @@ class OutlookProvider(MailProvider):
 
     def send(self, message: OutgoingMessage) -> None:
         recipients = {"toRecipients": _recipients(message.to), "ccRecipients": _recipients(message.cc)}
-        if message.reply_to:
+        if message.reply_to and message.attachments:
+            # A reply with files: create the reply as a draft (Graph threads it), attach, send.
+            res = self._call(
+                "POST", f"/messages/{message.reply_to.remote_id}/createReply", json={"message": recipients, "comment": message.body_text}
+            )
+            if res.status_code == 404:
+                raise ProviderError("The message you're replying to no longer exists in Outlook")
+            draft_id = res.json()["id"]
+            for attachment in message.attachments:
+                self._call("POST", f"/messages/{draft_id}/attachments", json=_file(attachment))
+            self._call("POST", f"/messages/{draft_id}/send")
+        elif message.reply_to:
             # Graph threads the reply and sets In-Reply-To/References itself.
             self._call("POST", f"/messages/{message.reply_to.remote_id}/reply", json={"message": recipients, "comment": message.body_text})
         else:
             payload = {"subject": message.subject, "body": {"contentType": "Text", "content": message.body_text}, **recipients}
+            if message.attachments:
+                payload["attachments"] = [_file(a) for a in message.attachments]
             self._call("POST", "/sendMail", json={"message": payload, "saveToSentItems": True})
         return None  # it appears in Sent Items, which the next sync reads
+
+    def fetch_attachment(self, message_remote_id: str, ref: str) -> bytes:
+        res = self._call("GET", f"/messages/{message_remote_id}/attachments/{ref}/$value")
+        if res.status_code in (404, 410):
+            raise ProviderError("That attachment no longer exists in Outlook")
+        return res.content

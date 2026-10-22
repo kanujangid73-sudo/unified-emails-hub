@@ -20,8 +20,18 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 
 from ..net import UnsafeHostError, check_public_host
-from .base import AuthError, FlagChange, MailProvider, OutgoingMessage, ProviderError, RemoteFlags, RemoteMessage, SyncBatch
-from .mime import build_message, parse_message, thread_key
+from .base import (
+    AuthError,
+    FlagChange,
+    MailProvider,
+    OutgoingMessage,
+    ProviderError,
+    RemoteAttachment,
+    RemoteFlags,
+    RemoteMessage,
+    SyncBatch,
+)
+from .mime import attachment_bytes, build_message, parse_message, thread_key
 
 TIMEOUT = 30
 # Messages bigger than this (usually because of attachments) get their headers only.
@@ -172,7 +182,7 @@ class ImapProvider(MailProvider):
         parsed = parse_message(raw, self._now())
         text = parsed.body_text
         if truncated:
-            text = "This message is too large to preview here (it probably has big attachments). Open it in your mail app."
+            text = "This message is too large to preview here (it probably has big attachments). Open it in your mail app to see them."
         return RemoteMessage(
             remote_id=f"{validity}:{uid}",
             thread_id=thread_key(parsed.message_id, parsed.in_reply_to, parsed.references) or f"{validity}:{uid}",
@@ -188,7 +198,20 @@ class ImapProvider(MailProvider):
             message_id_header=parsed.message_id,
             references=parsed.references,
             list_unsubscribe=parsed.list_unsubscribe,
+            attachments=() if truncated else parsed.attachments,
         )
+
+    def fetch_attachment(self, message_remote_id: str, ref: str) -> bytes:
+        validity, _, uid = message_remote_id.partition(":")
+        with self._inbox() as (conn, current):
+            if validity != current:
+                raise ProviderError("The mailbox was reorganised since this message was synced; sync again")
+            for item in _check(conn.uid("FETCH", uid, "(UID BODY.PEEK[])"), "FETCH"):
+                if isinstance(item, tuple):
+                    content = attachment_bytes(item[1], ref)
+                    if content is not None:
+                        return content
+        raise ProviderError("That attachment no longer exists on the mail server")
 
     def _recent_flags(self, conn: imaplib.IMAP4, validity: str, last: int) -> list[RemoteFlags]:
         low = max(1, last - FLAG_WINDOW)
@@ -239,4 +262,9 @@ class ImapProvider(MailProvider):
             is_read=True,
             message_id_header=message_id,
             references=mime.get("References", ""),
+            # The hub keeps the only copy, so it keeps the files too.
+            attachments=tuple(
+                RemoteAttachment(filename=a.filename, mime_type=a.mime_type, size=len(a.data), ref=str(i), data=a.data)
+                for i, a in enumerate(message.attachments)
+            ),
         )

@@ -13,7 +13,7 @@ import json
 import re
 from datetime import datetime, timezone
 
-from .base import Address, FlagChange, MailProvider, OutgoingMessage, RemoteFlags, RemoteMessage, SyncBatch
+from .base import Address, FlagChange, MailProvider, OutgoingMessage, ProviderError, RemoteAttachment, RemoteFlags, RemoteMessage, SyncBatch
 from .mime import addresses, build_message, parse_date
 from .oauth import OAuthSession
 
@@ -47,6 +47,34 @@ def _bodies(part: dict, found: dict[str, str]) -> None:
         _bodies(child, found)
 
 
+def _files(part: dict, found: list[RemoteAttachment]) -> None:
+    """Parts with a file name. Their part id is stable, unlike Gmail's attachmentId."""
+    body = part.get("body", {})
+    if part.get("filename") and (body.get("attachmentId") or body.get("data")):
+        headers = _headers(part)
+        found.append(
+            RemoteAttachment(
+                filename=part["filename"][:255],
+                mime_type=part.get("mimeType") or "application/octet-stream",
+                size=int(body.get("size", 0)),
+                ref=part.get("partId", ""),
+                content_id=headers.get("content-id", "").strip("<> ")[:255],
+                inline=headers.get("content-disposition", "").lower().startswith("inline"),
+            )
+        )
+    for child in part.get("parts", []):
+        _files(child, found)
+
+
+def _find_part(part: dict, part_id: str) -> dict | None:
+    if part.get("partId") == part_id:
+        return part
+    for child in part.get("parts", []):
+        if found := _find_part(child, part_id):
+            return found
+    return None
+
+
 def parse_gmail_message(data: dict) -> RemoteMessage:
     payload = data.get("payload", {})
     headers = _headers(payload)
@@ -54,6 +82,8 @@ def parse_gmail_message(data: dict) -> RemoteMessage:
     received = datetime.fromtimestamp(int(data.get("internalDate", "0")) / 1000, tz=timezone.utc)
     bodies: dict[str, str] = {}
     _bodies(payload, bodies)
+    files: list[RemoteAttachment] = []
+    _files(payload, files)
     senders = addresses(headers.get("from"))
     return RemoteMessage(
         remote_id=data["id"],
@@ -72,6 +102,7 @@ def parse_gmail_message(data: dict) -> RemoteMessage:
         message_id_header=headers.get("message-id", "").strip(),
         references=" ".join(headers.get("references", "").split()),
         list_unsubscribe=" ".join(headers.get("list-unsubscribe", "").split()),
+        attachments=tuple(files),
     )
 
 
@@ -194,6 +225,19 @@ class GmailProvider(MailProvider):
             body["threadId"] = message.reply_to.thread_remote_id
         self.api.request("POST", f"{API}/messages/send", json=body)
         return None  # the next sync picks it up from history
+
+    def fetch_attachment(self, message_remote_id: str, ref: str) -> bytes:
+        res = self._get(f"/messages/{message_remote_id}", format="full")
+        part = _find_part(res.json().get("payload", {}), ref) if res.status_code == 200 else None
+        if part is None:
+            raise ProviderError("That attachment no longer exists in Gmail")
+        body = part.get("body", {})
+        if body.get("data"):
+            return _b64decode(body["data"])
+        res = self._get(f"/messages/{message_remote_id}/attachments/{body['attachmentId']}")
+        if res.status_code == 404:
+            raise ProviderError("That attachment no longer exists in Gmail")
+        return _b64decode(res.json()["data"])
 
     def disconnect(self) -> None:
         self.api.revoke()

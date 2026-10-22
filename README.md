@@ -30,8 +30,10 @@ Every company and person in the demo is fictional.
   mailbox first, and roll back if the provider refuses.
 - **Compose and reply** from any account. Replies are threaded correctly for every
   recipient's mail client (In-Reply-To and References headers).
+- **Attachments**: see and download the files in any message, and attach up to 10 MB when
+  writing. Files stay with the provider and are fetched only when you download them.
 - **Search** across every account at once, with Gmail-style operators: `from:`, `to:`,
-  `is:unread`, `is:starred`, `before:`, `after:`, `"exact words"`. Postgres full-text search
+  `is:unread`, `is:starred`, `has:attachment`, `before:`, `after:`, `"exact words"`. Postgres full-text search
   with prefix matching in production.
 - **Background sync.** The server keeps every account up to date even when nobody has the app
   open: incremental, retried with exponential backoff, and paused with a "Reconnect" prompt if
@@ -117,7 +119,7 @@ The reasoning behind each choice is in [docs/DECISIONS.md](docs/DECISIONS.md).
 | AI | Google Gemini (structured JSON output, retries, graceful offline fallback) |
 | Security | Fernet encryption with key rotation, DOMPurify + sandboxed iframes + CSP, SSRF guard, rate limits |
 | Database | Postgres with full-text search (tsvector + GIN) in production, SQLite for development |
-| Testing | 105 Pytest tests against fake Gmail, Graph, IMAP and Gemini servers (run on SQLite and Postgres), 16 Vitest tests |
+| Testing | 119 Pytest tests against fake Gmail, Graph, IMAP and Gemini servers (run on SQLite and Postgres), 18 Vitest tests |
 | CI | GitHub Actions on every push |
 
 ## Run it locally

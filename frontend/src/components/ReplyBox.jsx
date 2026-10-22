@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { FilePicker, forUpload } from "./Attachments.jsx";
 import Icon from "./Icon.jsx";
 
 // Who a reply goes to: the last person who wrote to you, or whoever you last wrote to.
@@ -8,8 +9,9 @@ export function replyRecipient(messages) {
   return (messages[messages.length - 1]?.to || "").split(",")[0].trim();
 }
 
-export default function ReplyBox({ call, thread, account, aiProvider, onSent, onCancel }) {
+export default function ReplyBox({ call, thread, account, aiProvider, onSent, onCancel, onError }) {
   const [body, setBody] = useState("");
+  const [files, setFiles] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [instruction, setInstruction] = useState("");
@@ -48,7 +50,7 @@ export default function ReplyBox({ call, thread, account, aiProvider, onSent, on
     try {
       await call("/api/messages", {
         method: "POST",
-        body: { account_id: thread.account_id, to: [to], body, reply_to_thread_id: thread.id },
+        body: { account_id: thread.account_id, to: [to], body, reply_to_thread_id: thread.id, attachments: forUpload(files) },
       });
       onSent();
     } catch (err) {
@@ -94,6 +96,7 @@ export default function ReplyBox({ call, thread, account, aiProvider, onSent, on
         aria-label="Reply"
         placeholder="Write your reply…"
       />
+      <FilePicker files={files} onChange={setFiles} onError={onError} />
       {draftNote && <p className="muted small">{draftNote}</p>}
       {account?.provider === "demo" && <p className="muted small">Demo mailbox: the reply is saved in the hub but never actually sent.</p>}
       {error && (

@@ -13,9 +13,9 @@ from sqlmodel import Session, delete, select
 
 from .config import settings
 from .demo_data import DEMO_ACCOUNTS
-from .models import MailAccount, Message, Thread, User, utcnow
+from .models import MailAccount, User, utcnow
 from .security import hash_password
-from .sync import sync_account
+from .sync import delete_account_mail, sync_account
 
 logger = logging.getLogger("mailhub.demo")
 
@@ -56,8 +56,7 @@ def create_guest(session: Session) -> User:
 def delete_users(session: Session, user_ids: list[int]) -> None:
     account_ids = list(session.exec(select(MailAccount.id).where(MailAccount.user_id.in_(user_ids))))
     if account_ids:
-        session.exec(delete(Message).where(Message.account_id.in_(account_ids)))
-        session.exec(delete(Thread).where(Thread.account_id.in_(account_ids)))
+        delete_account_mail(session, account_ids)
         session.exec(delete(MailAccount).where(MailAccount.id.in_(account_ids)))
     session.exec(delete(User).where(User.id.in_(user_ids)))
     session.commit()

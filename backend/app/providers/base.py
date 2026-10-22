@@ -18,6 +18,20 @@ class Address:
 
 
 @dataclass(frozen=True)
+class RemoteAttachment:
+    """A file attached to a message. The content stays with the provider and is fetched on demand
+    with `ref`; only copies the hub keeps itself (sent over SMTP, demo mail) carry `data`."""
+
+    filename: str
+    mime_type: str
+    size: int
+    ref: str  # provider-specific: Gmail part id, Graph attachment id, index of the MIME part
+    content_id: str = ""
+    inline: bool = False
+    data: bytes | None = None
+
+
+@dataclass(frozen=True)
 class RemoteMessage:
     """One message as the provider reports it, already converted to plain Python values."""
 
@@ -39,6 +53,7 @@ class RemoteMessage:
     references: str = ""
     # The List-Unsubscribe header, e.g. "<https://news.example/unsub?u=1>, <mailto:leave@news.example>".
     list_unsubscribe: str = ""
+    attachments: tuple[RemoteAttachment, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -88,6 +103,13 @@ class ReplyContext:
 
 
 @dataclass(frozen=True)
+class OutgoingAttachment:
+    filename: str
+    mime_type: str
+    data: bytes
+
+
+@dataclass(frozen=True)
 class OutgoingMessage:
     sender: Address
     to: tuple[Address, ...]
@@ -95,6 +117,7 @@ class OutgoingMessage:
     body_text: str
     cc: tuple[Address, ...] = ()
     reply_to: ReplyContext | None = None
+    attachments: tuple[OutgoingAttachment, ...] = ()
 
 
 class ProviderError(Exception):
@@ -128,6 +151,10 @@ class MailProvider(ABC):
         Returns the sent message when the provider won't report it on the next sync (so the
         hub stores it right away), or None when the next sync will pick it up.
         """
+
+    def fetch_attachment(self, message_remote_id: str, ref: str) -> bytes:
+        """Download one attachment's content."""
+        raise ProviderError("This mailbox can't download attachments")
 
     def disconnect(self) -> None:
         """Called when the user removes the account, e.g. to revoke OAuth access. Best effort."""

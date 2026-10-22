@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { FilePicker, forUpload } from "./Attachments.jsx";
 import Dialog from "./Dialog.jsx";
 
 // "a@x.com, B <b@y.com>; c@z.com" -> ["a@x.com", "b@y.com", "c@z.com"]
@@ -13,6 +14,7 @@ export function parseRecipients(text) {
 }
 
 export default function ComposeDialog({ call, accounts, defaultAccountId, onClose, onSent }) {
+  const [files, setFiles] = useState([]);
   const usable = accounts.filter((a) => !a.needs_reauth);
   const [accountId, setAccountId] = useState(defaultAccountId && usable.some((a) => a.id === defaultAccountId) ? defaultAccountId : usable[0]?.id);
   const [to, setTo] = useState("");
@@ -31,7 +33,7 @@ export default function ComposeDialog({ call, accounts, defaultAccountId, onClos
     try {
       const thread = await call("/api/messages", {
         method: "POST",
-        body: { account_id: accountId, to: parseRecipients(to), cc: parseRecipients(cc), subject, body },
+        body: { account_id: accountId, to: parseRecipients(to), cc: parseRecipients(cc), subject, body, attachments: forUpload(files) },
       });
       onSent(thread);
     } catch (err) {
@@ -89,6 +91,7 @@ export default function ComposeDialog({ call, accounts, defaultAccountId, onClos
           aria-label="Message"
           placeholder="Write your message…"
         />
+        <FilePicker files={files} onChange={setFiles} onError={setError} />
         {account?.provider === "demo" && <p className="muted small">Demo mailbox: the message is saved in the hub but never actually sent.</p>}
         {error && (
           <p className="error" role="alert">

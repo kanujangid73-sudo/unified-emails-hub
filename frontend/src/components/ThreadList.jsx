@@ -42,7 +42,14 @@ export default function ThreadList({ threads, accountsById, selectedId, onOpen, 
                   {t.participants}
                   {t.message_count > 1 && <span className="msg-count">{t.message_count}</span>}
                 </span>
-                <time dateTime={t.last_message_at}>{listDate(t.last_message_at)}</time>
+                <span className="row-meta">
+                  {t.attachment_count > 0 && (
+                    <span className="clip" title={`${t.attachment_count} attachment${t.attachment_count > 1 ? "s" : ""}`}>
+                      <Icon name="attach" size={14} />
+                    </span>
+                  )}
+                  <time dateTime={t.last_message_at}>{listDate(t.last_message_at)}</time>
+                </span>
               </div>
               <div className="subject">
                 {t.suspicious_reasons.length > 0 && (

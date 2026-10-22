@@ -1,14 +1,14 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
-from sqlmodel import Session, delete, func, select
+from sqlmodel import Session, func, select
 
 from ..database import get_session
 from ..demo import add_sample_accounts
-from ..models import MailAccount, Message, Thread, User
+from ..models import MailAccount, Thread, User
 from ..providers import AuthError, ProviderError, get_provider
 from ..providers.imap import ImapProvider
 from ..schemas import AccountOut, ImapConnect, SyncOut
 from ..security import get_current_user
-from ..sync import sync_account
+from ..sync import delete_account_mail, sync_account
 from .oauth import first_sync, require_real_user, save_account
 
 router = APIRouter(prefix="/api", tags=["accounts"])
@@ -82,8 +82,7 @@ def disconnect_account(account_id: int, user: User = Depends(get_current_user), 
         get_provider(account).disconnect()
     except ProviderError:
         pass  # credentials already invalid: nothing to revoke
-    session.exec(delete(Message).where(Message.account_id == account.id))
-    session.exec(delete(Thread).where(Thread.account_id == account.id))
+    delete_account_mail(session, [account.id])
     session.delete(account)
     session.commit()
 

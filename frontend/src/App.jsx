@@ -25,6 +25,7 @@ const SEARCH_TIPS = [
   ["from:priya", "sent by someone"],
   ["to:northwind", "sent to an address"],
   ["is:unread  is:read  is:starred", "by status"],
+  ["has:attachment", "with files"],
   ["after:2026-09-01  before:2026-10-01", "by date"],
   ['"exact words"', "words together"],
 ];
@@ -475,6 +476,8 @@ function Mailbox({ token, user, onLogout }) {
       </section>
 
       <ThreadView
+        token={token}
+        onError={notify}
         hidden={Boolean(tool)}
         aiProvider={aiProvider}
         thread={detail}

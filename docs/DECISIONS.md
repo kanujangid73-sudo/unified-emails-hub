@@ -165,3 +165,20 @@ lists), is grouped by the sender's registrable domain (`deals.shopkart.example` 
 
 **Why.** A friend writing "welcome to the team" isn't a service account, and a fake "verify your
 PayWave account" email must not make PayWave look like an account you have.
+
+## 16. Attachments are fetched on demand, and always downloaded, never rendered
+
+**Decision.** The hub stores only each attachment's name, type, size and a provider reference;
+the content is fetched from the provider when someone downloads it
+([routers/attachments.py](../backend/app/routers/attachments.py)). The only exceptions are copies
+the hub itself is the source of (mail sent over SMTP, demo mail), whose bytes are kept. Downloads
+are served with `Content-Disposition: attachment`, `nosniff` and a sandbox CSP, and HTML, SVG and
+XML files get a neutral content type, so an attachment can't run script on the app's origin.
+
+Provider details: Gmail attachments are found by their part id, because Gmail issues a new
+`attachmentId` every time a message is fetched. Outlook replies with files are created as a
+draft, given the files, then sent, since the one-step reply call doesn't take attachments.
+IMAP messages over 2 MB are synced without their body or file list (open them in the mail app).
+
+**Why.** Attachments are most of a mailbox's size; copying them would exhaust a free database in
+days and duplicate data the provider already keeps safely.

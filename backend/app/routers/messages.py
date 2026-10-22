@@ -4,10 +4,10 @@ from sqlmodel import Session, select
 from ..config import settings
 from ..database import get_session
 from ..models import Message, Thread, User
-from ..providers import Address, AuthError, OutgoingMessage, ProviderError, ReplyContext, get_provider
+from ..providers import Address, AuthError, OutgoingAttachment, OutgoingMessage, ProviderError, ReplyContext, get_provider
 from ..providers.mime import reply_subject
 from ..ratelimit import SlidingWindowLimiter
-from ..schemas import SendIn, ThreadOut
+from ..schemas import MAX_ATTACHMENT_BYTES, SendIn, ThreadOut
 from ..security import get_current_user
 from ..sync import store_message, sync_account
 from .accounts import owned_account
@@ -44,6 +44,13 @@ def send(data: SendIn, user: User = Depends(get_current_user), session: Session 
     if not subject:
         subject = "(no subject)"
 
+    try:
+        files = tuple(OutgoingAttachment(a.filename, a.mime_type, a.content()) for a in data.attachments)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from None
+    if sum(len(f.data) for f in files) > MAX_ATTACHMENT_BYTES:
+        raise HTTPException(413, "Attachments can be at most 10 MB in total")
+
     if not send_limiter.hit(user.id):
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "You've reached the hourly sending limit. Try again later.")
 
@@ -54,6 +61,7 @@ def send(data: SendIn, user: User = Depends(get_current_user), session: Session 
         subject=subject,
         body_text=data.body,
         reply_to=reply,
+        attachments=files,
     )
     try:
         stored = get_provider(account).send(outgoing)
