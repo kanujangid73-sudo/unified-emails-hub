@@ -67,3 +67,8 @@ def test_expired_guests_are_removed_with_their_mail(client, demo, session):
     account_ids = {a.id for a in session.exec(select(MailAccount)).all()}
     assert {t.account_id for t in session.exec(select(Thread)).all()} <= account_ids
     assert {m.account_id for m in session.exec(select(Message)).all()} <= account_ids
+
+
+def test_health_needs_no_login_or_database(client):
+    res = client.get("/api/health")
+    assert res.status_code == 200 and res.json()["status"] == "ok"

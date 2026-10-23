@@ -47,6 +47,11 @@ jobs:
           cache-dependency-path: backend/requirements*.txt
       - run: pip install -r requirements-dev.txt
       - run: pytest -q
+      # Sync and query timings on real Postgres, shown in the run's summary page.
+      - name: Benchmark (20,000 messages)
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/mailhub_test
+        run: python -m scripts.benchmark --messages 20000
 
   frontend:
     runs-on: ubuntu-latest
@@ -63,3 +68,37 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+
+  # Redeploy on Render after the tests pass on main, only for the parts that changed.
+  # Needs the repository secrets RENDER_DEPLOY_HOOK_API and RENDER_DEPLOY_HOOK_WEB
+  # (each service's Settings -> Deploy Hook on Render). See docs/DEPLOY.md.
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [backend, backend-postgres, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            api:
+              - "backend/**"
+              - "render.yaml"
+            web:
+              - "frontend/**"
+              - "render.yaml"
+      - name: Deploy API
+        if: steps.changes.outputs.api == 'true'
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_API }}
+        run: |
+          if [ -z "$HOOK" ]; then echo "::notice::RENDER_DEPLOY_HOOK_API is not set, skipping"; exit 0; fi
+          curl --fail --silent --show-error -X POST "$HOOK" > /dev/null && echo "API deploy triggered"
+      - name: Deploy web app
+        if: steps.changes.outputs.web == 'true'
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_WEB }}
+        run: |
+          if [ -z "$HOOK" ]; then echo "::notice::RENDER_DEPLOY_HOOK_WEB is not set, skipping"; exit 0; fi
+          curl --fail --silent --show-error -X POST "$HOOK" > /dev/null && echo "Web app deploy triggered"

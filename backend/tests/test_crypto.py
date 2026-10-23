@@ -33,3 +33,13 @@ def test_max_age(monkeypatch):
     monkeypatch.setattr(time, "time", lambda: 10**10)  # far in the future
     with pytest.raises(CryptoError):
         decrypt_json(sealed, max_age_seconds=60)
+
+
+def test_any_long_random_secret_works_as_a_key(monkeypatch):
+    # Hosts like Render generate secrets that aren't in Fernet's format.
+    monkeypatch.setattr(settings, "encryption_keys", ["J8x2_render-generated-value-that-is-long-enough"])
+    sealed = encrypt_json({"ok": True})
+    assert decrypt_json(sealed) == {"ok": True}
+    monkeypatch.setattr(settings, "encryption_keys", ["a-different-long-random-secret-value-1234"])
+    with pytest.raises(CryptoError):
+        decrypt_json(sealed)

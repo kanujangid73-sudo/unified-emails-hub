@@ -15,12 +15,15 @@ from sqlalchemy import or_, update
 from sqlmodel import Session, select
 
 from . import database
+from .demo import purge_expired_guests
 from .models import MailAccount, utcnow
 from .sync import sync_account
 
 logger = logging.getLogger("mailhub.scheduler")
 
 TICK_SECONDS = 30
+# How often expired demo accounts are deleted, so a busy demo can't fill the free database.
+CLEANUP_EVERY = timedelta(hours=1)
 LEASE = timedelta(minutes=10)
 BATCH = 20
 
@@ -58,10 +61,19 @@ def sync_due_accounts(now: datetime | None = None, limit: int = BATCH) -> int:
     return synced
 
 
+def cleanup() -> int:
+    with Session(database.engine) as session:
+        return purge_expired_guests(session)
+
+
 async def run(stop: asyncio.Event) -> None:
     logger.info("Background sync started")
+    last_cleanup = None
     while not stop.is_set():
         try:
+            if last_cleanup is None or utcnow() - last_cleanup >= CLEANUP_EVERY:
+                await asyncio.to_thread(cleanup)
+                last_cleanup = utcnow()
             count = await asyncio.to_thread(sync_due_accounts)
             if count:
                 logger.info("Background sync: %d account(s) synced", count)

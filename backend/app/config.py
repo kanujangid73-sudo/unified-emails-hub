@@ -55,7 +55,8 @@ class Settings:
     page_size = int(os.getenv("PAGE_SIZE", "50"))
 
     # Where this API and the web app are reachable; used to build OAuth redirect URLs.
-    public_api_url = _origin(os.getenv("PUBLIC_API_URL", "http://localhost:8000"))
+    # On Render, RENDER_EXTERNAL_URL is the service's own public address.
+    public_api_url = _origin(os.getenv("PUBLIC_API_URL") or os.getenv("RENDER_EXTERNAL_URL") or "http://localhost:8000")
     frontend_url = _origin(os.getenv("FRONTEND_URL", "http://localhost:5173"))
 
     # Keys that encrypt stored mailbox credentials (Fernet keys, comma-separated). The first
@@ -98,8 +99,8 @@ class Settings:
         problems = []
         if len(os.getenv("SECRET_KEY", "")) < 32:
             problems.append("SECRET_KEY must be set to a random string of at least 32 characters")
-        if not self.encryption_keys:
-            problems.append("ENCRYPTION_KEY must be set (it protects stored mailbox credentials)")
+        if not self.encryption_keys or any(len(k) < 32 for k in self.encryption_keys):
+            problems.append("ENCRYPTION_KEY must be set to a Fernet key or a random string of at least 32 characters")
         if self.database_url.startswith("sqlite"):
             problems.append("DATABASE_URL must point to Postgres (SQLite files are wiped on most free hosts)")
         if not self.cors_origins:

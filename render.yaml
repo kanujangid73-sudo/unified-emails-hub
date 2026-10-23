@@ -1,0 +1,59 @@
+# Render Blueprint: the API and the web app on Render's free plan, with a free Postgres
+# database from Neon (https://neon.tech). Step-by-step guide: docs/DEPLOY.md.
+services:
+  - type: web
+    name: mailhub-api
+    runtime: python
+    plan: free
+    region: ohio # next to a Neon database in AWS US East 2 (Ohio)
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips "*"
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.7
+      - key: APP_ENV
+        value: production
+      # Generated once by Render and kept. Never change ENCRYPTION_KEY without adding the old
+      # one after it (comma-separated), or saved mailbox sign-ins can't be read any more.
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ENCRYPTION_KEY
+        generateValue: true
+      # Asked for when the Blueprint is created.
+      - key: DATABASE_URL # Neon connection string: postgresql://...?sslmode=require
+        sync: false
+      - key: FRONTEND_URL # the web app's URL, e.g. https://mailhub-web.onrender.com
+        sync: false
+      - key: CORS_ORIGINS # the same web app URL
+        sync: false
+      - key: GEMINI_API_KEY # optional, free key from https://aistudio.google.com/apikey
+        sync: false
+
+  - type: web
+    name: mailhub-web
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL # the API's URL, e.g. https://mailhub-api.onrender.com
+        sync: false
+    headers:
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

@@ -1,5 +1,7 @@
 # Unified Emails Hub
 
+[![CI](https://github.com/kanujangid73-sudo/unified-emails-hub/actions/workflows/ci.yml/badge.svg)](https://github.com/kanujangid73-sudo/unified-emails-hub/actions/workflows/ci.yml)
+
 **One fast, private inbox for every email account you own.** Gmail, Outlook and any IMAP
 mailbox in a single list, newest first, colour-coded by account.
 
@@ -109,6 +111,25 @@ a Content-Security-Policy that blocks all network requests except images you cho
 
 The reasoning behind each choice is in [docs/DECISIONS.md](docs/DECISIONS.md).
 
+## Performance
+
+Measured with [`scripts/benchmark.py`](backend/scripts/benchmark.py), which runs the real sync
+engine and API queries on a synthetic mailbox. SQLite on a laptop (i5-7300U, 8 GB RAM):
+
+| Operation, 10,000 messages | Result |
+|---|---|
+| Full first sync | 15.6 s (640 messages/s) |
+| Incremental sync, 50 new messages | 124 ms |
+| Inbox, first page of 50 | p50 4.1 ms |
+| All mail, page 41 (keyset pagination) | p50 3.9 ms, the same as page 1 |
+| Search "invoice payment" | p50 5.2 ms |
+
+CI runs it on Postgres with 20,000 messages on every push (see a run's summary page). The
+benchmark paid for itself: it showed that lists without the archive filter (All mail, Sent,
+search) sorted every conversation, so deep pages were 5× slower than the first one. One
+index (`user_id, last_message_at, id`) brought them to the same speed and made search
+about 20× faster.
+
 ## Tech stack
 
 | Layer | Tools |
@@ -119,7 +140,7 @@ The reasoning behind each choice is in [docs/DECISIONS.md](docs/DECISIONS.md).
 | AI | Google Gemini (structured JSON output, retries, graceful offline fallback) |
 | Security | Fernet encryption with key rotation, DOMPurify + sandboxed iframes + CSP, SSRF guard, rate limits |
 | Database | Postgres with full-text search (tsvector + GIN) in production, SQLite for development |
-| Testing | 119 Pytest tests against fake Gmail, Graph, IMAP and Gemini servers (run on SQLite and Postgres), 18 Vitest tests |
+| Testing | 122 Pytest tests against fake Gmail, Graph, IMAP and Gemini servers (run on SQLite and Postgres), 18 Vitest tests |
 | CI | GitHub Actions on every push |
 
 ## Run it locally
@@ -146,6 +167,8 @@ The demo needs nothing else; to connect real accounts, follow
 
 Run the tests with `pytest` in `backend/` and `npm test` in `frontend/`.
 
+To put it online for free (Render + Neon), follow [docs/DEPLOY.md](docs/DEPLOY.md).
+
 ## Roadmap
 
 - [x] **Phase 1: Foundation.** Provider interface, sync engine, unified inbox, threads, flags,
@@ -155,4 +178,6 @@ Run the tests with `pytest` in `backend/` and `npm test` in `frontend/`.
       leases and backoff; Postgres full-text search with operators; compose and reply.
 - [x] **Phase 3: Insights and AI.** Inbox categories, phishing warnings, Account Finder,
       subscription cleanup, AI summaries and reply drafts.
-- [ ] **Phase 4: Launch.** Free deployment (Render + Neon), demo video, performance numbers.
+- [x] **Attachments** for every provider: list, download on demand, send.
+- [ ] **Phase 4: Launch.** ~~Render Blueprint~~, ~~benchmarks~~, ~~CI auto-deploy~~; live
+      deployment and [demo video](docs/DEMO_SCRIPT.md) to go.

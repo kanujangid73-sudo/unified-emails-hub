@@ -19,14 +19,27 @@ class CryptoError(Exception):
     """A stored secret can't be decrypted (wrong key, or the value was modified)."""
 
 
+def _derive(secret: str) -> str:
+    digest = hashlib.sha256(f"mailhub-credentials:{secret}".encode()).digest()
+    return base64.urlsafe_b64encode(digest).decode()
+
+
+def _as_fernet(key: str) -> Fernet:
+    """A real Fernet key is used as is; any other long random secret (such as one a host like
+    Render generates) is turned into one with SHA-256."""
+    try:
+        return Fernet(key)
+    except ValueError:
+        return Fernet(_derive(key))
+
+
 def _fernet() -> MultiFernet:
     keys = settings.encryption_keys
     if not keys:
         # Development fallback: derived from SECRET_KEY, so secrets survive restarts only when
         # SECRET_KEY is set. Production refuses to start without ENCRYPTION_KEY.
-        digest = hashlib.sha256(f"mailhub-credentials:{settings.secret_key}".encode()).digest()
-        keys = [base64.urlsafe_b64encode(digest).decode()]
-    return MultiFernet([Fernet(k) for k in keys])
+        keys = [_derive(settings.secret_key)]
+    return MultiFernet([_as_fernet(k) for k in keys])
 
 
 def encrypt_json(data: dict) -> str:

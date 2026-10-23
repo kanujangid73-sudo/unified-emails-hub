@@ -61,6 +61,8 @@ class Thread(SQLModel, table=True):
         UniqueConstraint("account_id", "remote_id", name="uq_thread_account_remote"),
         # The unified inbox: newest first, across all of a user's accounts.
         Index("ix_thread_user_inbox", "user_id", "is_archived", "last_message_at", "id"),
+        # All mail, Sent, Starred and search results: newest first without the archive filter.
+        Index("ix_thread_user_recent", "user_id", "last_message_at", "id"),
         # Inbox tabs (Primary, Updates, Promotions, Newsletters).
         Index("ix_thread_user_category", "user_id", "category", "is_archived", "last_message_at"),
     )

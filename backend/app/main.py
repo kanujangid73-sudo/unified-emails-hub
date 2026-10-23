@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import scheduler
+from . import ai, scheduler
 from .config import settings
 from .database import init_db
 from .routers import accounts, attachments, auth, insights, messages, oauth, threads
@@ -49,6 +49,13 @@ app.include_router(threads.router)
 app.include_router(messages.router)
 app.include_router(insights.router)
 app.include_router(attachments.router)
+
+
+@app.get("/api/health", tags=["health"])
+def health() -> dict[str, str]:
+    """For uptime checks and the host's deploy check. Doesn't touch the database, so pinging it
+    keeps the API awake without waking a database that sleeps when idle."""
+    return {"status": "ok", "version": settings.version, "ai": ai.provider()}
 
 
 @app.get("/", include_in_schema=False)

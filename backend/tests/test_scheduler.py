@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app import database, scheduler
 from app import sync as sync_module
@@ -102,3 +102,11 @@ def test_a_crashing_provider_does_not_stop_the_others(session, monkeypatch):
     assert scheduler.sync_due_accounts() == 2
     states = sorted((reload(a.id).sync_error or "", reload(a.id).sync_cursor or "") for a in made)
     assert states == [("", "ok"), ("Unexpected error while syncing. It will be retried.", "")]
+
+
+def test_cleanup_removes_expired_demo_accounts(client, demo, session):
+    guest = session.exec(select(User).where(User.is_guest == True)).one()  # noqa: E712
+    guest.created_at = utcnow() - timedelta(days=2)
+    session.add(guest)
+    session.commit()
+    assert scheduler.cleanup() == 1
