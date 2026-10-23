@@ -114,21 +114,22 @@ The reasoning behind each choice is in [docs/DECISIONS.md](docs/DECISIONS.md).
 ## Performance
 
 Measured with [`scripts/benchmark.py`](backend/scripts/benchmark.py), which runs the real sync
-engine and API queries on a synthetic mailbox. SQLite on a laptop (i5-7300U, 8 GB RAM):
+engine and API queries on a synthetic mailbox. CI runs it on Postgres 17 on every push (GitHub
+Actions runner); the second column is SQLite on a laptop (i5-7300U, 8 GB RAM):
 
-| Operation, 10,000 messages | Result |
-|---|---|
-| Full first sync | 15.6 s (640 messages/s) |
-| Incremental sync, 50 new messages | 124 ms |
-| Inbox, first page of 50 | p50 4.1 ms |
-| All mail, page 41 (keyset pagination) | p50 3.9 ms, the same as page 1 |
-| Search "invoice payment" | p50 5.2 ms |
+| Operation | Postgres, 20,000 messages | SQLite, 10,000 messages |
+|---|---|---|
+| Full first sync | 19.6 s (1,019 messages/s) | 15.6 s (640 messages/s) |
+| Incremental sync, 50 new messages | 84 ms | 124 ms |
+| Inbox, first page of 50 | p50 1.7 ms | p50 4.1 ms |
+| All mail, page 41 (keyset pagination) | p50 2.3 ms | p50 3.9 ms |
+| Full-text search "invoice payment" | p50 2.3 ms | p50 5.2 ms |
+| Search with operators `from:person7 is:unread` | p50 4.8 ms | p50 11.2 ms |
 
-CI runs it on Postgres with 20,000 messages on every push (see a run's summary page). The
-benchmark paid for itself: it showed that lists without the archive filter (All mail, Sent,
+The benchmark paid for itself: it showed that lists without the archive filter (All mail, Sent,
 search) sorted every conversation, so deep pages were 5× slower than the first one. One
 index (`user_id, last_message_at, id`) brought them to the same speed and made search
-about 20× faster.
+about 20× faster (measured on SQLite: 81 ms to 3.9 ms).
 
 ## Tech stack
 
