@@ -97,3 +97,9 @@ def test_send_new_and_reply():
 
 def test_identity():
     assert provider_for(FakeGraph()).identity() == Address("me@contoso.example", "Me Myself")
+
+
+def test_trash_moves_to_deleted_items():
+    fake = FakeGraph()
+    provider_for(fake).trash(["msg-1", "msg-2"])
+    assert fake.moves == [("msg-1", "deleteditems"), ("msg-2", "deleteditems")]

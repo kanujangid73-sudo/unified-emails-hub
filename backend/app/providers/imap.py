@@ -17,6 +17,7 @@ import ssl
 import uuid
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
 from ..net import UnsafeHostError, check_public_host
@@ -42,6 +43,12 @@ FLAG_WINDOW = 300
 _UID = re.compile(rb"UID (\d+)")
 _FLAGS = re.compile(rb"FLAGS \(([^)]*)\)")
 _SIZE = re.compile(rb"RFC822\.SIZE (\d+)")
+# One line of a LIST response: (flags) "delimiter" name
+_LIST = re.compile(rb'\((?P<flags>[^)]*)\) (?:"[^"]*"|NIL) (?P<name>.+)$')
+# Trash folder names to try when the server doesn't mark one with the \Trash attribute (RFC 6154).
+TRASH_NAMES = ("Trash", "Deleted Items", "Deleted Messages", "INBOX.Trash")
+# UIDs per MOVE/COPY command, to keep command lines short.
+TRASH_CHUNK = 200
 
 
 def connect_imap(credentials: dict) -> imaplib.IMAP4:
@@ -175,7 +182,9 @@ class ImapProvider(MailProvider):
                 meta, raw = item
                 uid = _UID.search(meta)
                 if uid:
-                    messages.append(self._convert(validity, int(uid.group(1)), _flag_set(meta), raw, truncated=part.endswith("[HEADER]")))
+                    number = int(uid.group(1))
+                    message = self._convert(validity, number, _flag_set(meta), raw, truncated=part.endswith("[HEADER]"))
+                    messages.append(replace(message, size=sizes.get(number)))
         return messages
 
     def _convert(self, validity: str, uid: int, flags: set[str], raw: bytes, truncated: bool) -> RemoteMessage:
@@ -234,6 +243,38 @@ class ImapProvider(MailProvider):
             for value, flag in ((change.is_read, "\\Seen"), (change.is_starred, "\\Flagged")):
                 if value is not None:
                     _check(conn.uid("STORE", id_list, "+FLAGS" if value else "-FLAGS", f"({flag})"), "STORE")
+
+    def _trash_folder(self, conn: imaplib.IMAP4) -> str | None:
+        names = []
+        for line in _check(conn.list(), "LIST"):
+            match = _LIST.match(line) if isinstance(line, bytes) else None
+            if not match:
+                continue
+            name = match.group("name").decode()
+            if "\\trash" in match.group("flags").decode().lower():
+                return name if name.startswith('"') else f'"{name}"'
+            names.append(name.strip('"'))
+        found = next((n for n in TRASH_NAMES if n in names), None)
+        return f'"{found}"' if found else None
+
+    def trash(self, message_remote_ids: list[str]) -> None:
+        with self._inbox(readonly=False) as (conn, validity):
+            uids = [rid.split(":", 1)[1] for rid in message_remote_ids if rid.startswith(f"{validity}:")]
+            if not uids:
+                return
+            folder = self._trash_folder(conn)
+            if folder is None:
+                raise ProviderError("This mail server has no Trash folder, so the hub won't delete mail from it")
+            can_move = "MOVE" in getattr(conn, "capabilities", ())
+            for start in range(0, len(uids), TRASH_CHUNK):
+                id_list = ",".join(uids[start : start + TRASH_CHUNK])
+                if can_move:
+                    _check(conn.uid("MOVE", id_list, folder), "MOVE")
+                else:  # older servers: copy to Trash, then remove from the inbox
+                    _check(conn.uid("COPY", id_list, folder), "COPY")
+                    _check(conn.uid("STORE", id_list, "+FLAGS", "(\\Deleted)"), "STORE")
+            if not can_move:
+                _check(conn.expunge(), "EXPUNGE")
 
     def send(self, message: OutgoingMessage) -> RemoteMessage:
         mime = build_message(message)

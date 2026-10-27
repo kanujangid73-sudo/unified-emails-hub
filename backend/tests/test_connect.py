@@ -127,6 +127,23 @@ def test_imap_connect_stores_the_password_encrypted(client, auth, monkeypatch, s
     assert decrypt_json(stored)["imap_host"] == "imap.oldmail.example"
 
 
+def test_each_account_gets_its_own_colour(client, auth, monkeypatch):
+    monkeypatch.setattr(ImapProvider, "verify", lambda self: None)
+    monkeypatch.setattr("app.routers.accounts.first_sync", lambda account_id: None)
+    for email in ("a@oldmail.example", "b@oldmail.example"):
+        assert client.post("/api/accounts/imap", headers=auth, json={**IMAP_FORM, "email": email}).status_code == 201
+    colours = [a["color"] for a in client.get("/api/accounts", headers=auth).json()]
+    assert colours[0] == "#7c3aed" and len(set(colours)) == 2
+
+
+def test_gmail_app_password_spaces_are_removed(client, auth, monkeypatch, session):
+    monkeypatch.setattr(ImapProvider, "verify", lambda self: None)
+    monkeypatch.setattr("app.routers.accounts.first_sync", lambda account_id: None)
+    form = {**IMAP_FORM, "email": "me@gmail.com", "password": "abcd efgh ijkl mnop", "imap_host": "imap.gmail.com", "smtp_host": "smtp.gmail.com"}
+    assert client.post("/api/accounts/imap", headers=auth, json=form).status_code == 201
+    assert decrypt_json(session.exec(select(MailAccount)).one().credentials)["password"] == "abcdefghijklmnop"
+
+
 def test_imap_form_is_validated(client, auth):
     assert client.post("/api/accounts/imap", headers=auth, json={**IMAP_FORM, "imap_port": 143}).status_code == 422  # TLS only
     assert client.post("/api/accounts/imap", headers=auth, json={**IMAP_FORM, "imap_host": "evil host;"}).status_code == 422

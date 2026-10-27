@@ -123,3 +123,34 @@ def test_list_unsubscribe_header_is_kept():
     raw = rfc822("Weekly digest", msgid="<n@news>").replace(b"Subject:", b"List-Unsubscribe: <https://news.example/u?id=1>\nSubject:", 1)
     server.add(1, raw)
     assert provider(server).fetch_changes(None).messages[0].list_unsubscribe == "<https://news.example/u?id=1>"
+
+
+def test_message_sizes_come_from_the_server():
+    server = mailbox()
+    server.mail[9]["size"] = 48_000
+    sizes = {m.remote_id: m.size for m in provider(server).fetch_changes(None).messages}
+    assert sizes["7:9"] == 48_000 and sizes["7:3"] == len(server.mail[3]["raw"])
+
+
+def test_trash_moves_mail_to_the_trash_folder():
+    server = mailbox()
+    provider(server).trash(["7:3", "7:9", "6:5"])  # 6:5 is from an older UIDVALIDITY: skipped
+    assert server.moved == [(3, '"[Gmail]/Trash"'), (9, '"[Gmail]/Trash"')]
+    assert sorted(server.mail) == [5]
+
+
+def test_trash_without_move_copies_then_expunges():
+    server = mailbox()
+    server.capabilities = ("IMAP4REV1",)
+    server.folders = [b'(\\HasNoChildren) "." INBOX', b'(\\HasNoChildren) "." Trash']  # no \Trash attribute
+    provider(server).trash(["7:9"])
+    assert server.moved == [(9, '"Trash"')]
+    assert sorted(server.mail) == [3, 5] and server.expunged == 1
+
+
+def test_trash_refuses_when_there_is_no_trash_folder():
+    server = mailbox()
+    server.folders = [b'(\\HasNoChildren) "/" "INBOX"']
+    with pytest.raises(imap_module.ProviderError, match="no Trash folder"):
+        provider(server).trash(["7:9"])
+    assert sorted(server.mail) == [3, 5, 9]  # nothing deleted for good

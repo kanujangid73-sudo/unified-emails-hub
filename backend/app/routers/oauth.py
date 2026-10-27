@@ -34,6 +34,13 @@ router = APIRouter(prefix="/api/oauth", tags=["connect accounts"])
 
 STATE_TTL_SECONDS = 600
 COLORS = {"gmail": "#ea4335", "outlook": "#0078d4", "imap": "#7c3aed"}
+# For a second account of the same kind, so every account in the list keeps its own colour.
+EXTRA_COLORS = ("#0d9488", "#d97706", "#db2777", "#16a34a", "#2563eb", "#9333ea", "#dc2626", "#0891b2")
+
+
+def pick_color(session: Session, user_id: int, provider: str) -> str:
+    used = set(session.exec(select(MailAccount.color).where(MailAccount.user_id == user_id)).all())
+    return next((c for c in (COLORS[provider], *EXTRA_COLORS) if c not in used), COLORS[provider])
 
 
 def _app(provider: str) -> oauth.OAuthApp:
@@ -71,7 +78,7 @@ def save_account(session: Session, user_id: int, provider: str, email: str, name
     """Create the account, or refresh the sign-in of one already connected (reconnect)."""
     account = session.exec(select(MailAccount).where(MailAccount.user_id == user_id, MailAccount.email == email)).first()
     if account is None:
-        account = MailAccount(user_id=user_id, provider=provider, brand=provider, email=email, display_name=name or email.split("@")[0], color=COLORS[provider])
+        account = MailAccount(user_id=user_id, provider=provider, brand=provider, email=email, display_name=name or email.split("@")[0], color=pick_color(session, user_id, provider))
     elif account.provider != provider:
         raise HTTPException(status.HTTP_409_CONFLICT, f"{email} is already connected another way")
     account.credentials = encrypt_json(credentials)

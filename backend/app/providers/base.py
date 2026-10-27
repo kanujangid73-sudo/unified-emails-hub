@@ -54,6 +54,8 @@ class RemoteMessage:
     # The List-Unsubscribe header, e.g. "<https://news.example/unsub?u=1>, <mailto:leave@news.example>".
     list_unsubscribe: str = ""
     attachments: tuple[RemoteAttachment, ...] = ()
+    # Bytes the message takes up in the mailbox, when the provider reports it.
+    size: int | None = None
 
 
 @dataclass(frozen=True)
@@ -155,6 +157,11 @@ class MailProvider(ABC):
     def fetch_attachment(self, message_remote_id: str, ref: str) -> bytes:
         """Download one attachment's content."""
         raise ProviderError("This mailbox can't download attachments")
+
+    def trash(self, message_remote_ids: list[str]) -> None:
+        """Move messages to the mailbox's Trash, where the provider keeps them for a while (Gmail
+        and Outlook: 30 days) before deleting them for good. Messages already gone are skipped."""
+        raise ProviderError("This mailbox can't delete mail")
 
     def disconnect(self) -> None:
         """Called when the user removes the account, e.g. to revoke OAuth access. Best effort."""

@@ -54,9 +54,13 @@ def connect_imap(
 ) -> AccountOut:
     """Connect any mailbox over IMAP (reading) and SMTP (sending). The password is stored encrypted."""
     require_real_user(user)
+    password = data.password
+    if data.imap_host.lower() == "imap.gmail.com":
+        # Google shows app passwords in groups of four ("abcd efgh ..."); the spaces aren't part of it.
+        password = password.replace(" ", "")
     credentials = {
         "username": data.username or data.email,
-        "password": data.password,
+        "password": password,
         "imap_host": data.imap_host.lower(),
         "imap_port": data.imap_port,
         "smtp_host": data.smtp_host.lower(),

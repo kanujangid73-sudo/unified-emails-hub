@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { PRESETS, presetForEmail } from "../lib/imapPresets.js";
+import { PRESETS, presetForEmail, setupLinks } from "../lib/imapPresets.js";
 import Dialog from "./Dialog.jsx";
 import Icon from "./Icon.jsx";
 
@@ -17,6 +17,9 @@ function ImapForm({ call, onConnected, notify }) {
   const [form, setForm] = useState({ email: "", password: "", display_name: "", preset: "", imap_host: "", smtp_host: "", smtp_port: 465 });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  const links = setupLinks(form.preset, form.email);
+  const forAddress = form.email.includes("@") ? ` for ${form.email.trim()}` : "";
 
   const set = (key, value) => setForm((f) => ({ ...f, [key]: value }));
   const applyPreset = (preset) =>
@@ -71,6 +74,25 @@ function ImapForm({ call, onConnected, notify }) {
           <input type="password" value={form.password} onChange={(e) => set("password", e.target.value)} required autoComplete="new-password" />
           <small className="muted">Most providers need an app password (made in your account's security settings), not your normal password.</small>
         </label>
+        {links && (
+          <ol className="setup-steps span-2">
+            {links.twoStep && (
+              <li>
+                <a href={links.twoStep} target="_blank" rel="noopener noreferrer">
+                  Turn on 2-Step Verification{forAddress} ↗
+                </a>{" "}
+                <span className="muted">(skip if it's already on)</span>
+              </li>
+            )}
+            <li>
+              <a href={links.appPassword} target="_blank" rel="noopener noreferrer">
+                Create an app password{forAddress} ↗
+              </a>{" "}
+              <span className="muted">(any name, such as "Emails Hub")</span>
+            </li>
+            <li className="muted">Copy the code it shows and paste it into the box above.</li>
+          </ol>
+        )}
         <label>
           Provider
           <select value={form.preset} onChange={(e) => applyPreset(PRESETS.find((p) => p.id === e.target.value))}>

@@ -103,6 +103,7 @@ def parse_gmail_message(data: dict) -> RemoteMessage:
         references=" ".join(headers.get("references", "").split()),
         list_unsubscribe=" ".join(headers.get("list-unsubscribe", "").split()),
         attachments=tuple(files),
+        size=data.get("sizeEstimate"),
     )
 
 
@@ -217,6 +218,10 @@ class GmailProvider(MailProvider):
             label("INBOX", not change.is_archived)
         if add or remove:
             self.api.request("POST", f"{API}/threads/{thread_remote_id}/modify", json={"addLabelIds": add, "removeLabelIds": remove})
+
+    def trash(self, message_remote_ids: list[str]) -> None:
+        for message_id in message_remote_ids:
+            self.api.request("POST", f"{API}/messages/{message_id}/trash")  # 404 (already gone) is fine
 
     def send(self, message: OutgoingMessage) -> None:
         raw = base64.urlsafe_b64encode(build_message(message).as_bytes()).decode()

@@ -196,6 +196,10 @@ class OutlookProvider(MailProvider):
                 destination = "archive" if change.is_archived else "inbox"
                 self._call("POST", f"/messages/{message_id}/move", json={"destinationId": destination})
 
+    def trash(self, message_remote_ids: list[str]) -> None:
+        for message_id in message_remote_ids:
+            self._call("POST", f"/messages/{message_id}/move", json={"destinationId": "deleteditems"})
+
     def send(self, message: OutgoingMessage) -> None:
         recipients = {"toRecipients": _recipients(message.to), "ccRecipients": _recipients(message.cc)}
         if message.reply_to and message.attachments:

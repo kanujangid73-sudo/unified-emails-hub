@@ -290,3 +290,39 @@ class SubscriptionOut(BaseModel):
     unsubscribe_mailto: str | None
     thread_ids: list[int]
     account_ids: list[int]
+
+
+class CleanupSender(BaseModel):
+    account_id: int
+    email: str
+    name: str
+    count: int
+    read: int
+    starred: int
+    size: int
+    first_seen: UTCDatetime
+    last_seen: UTCDatetime
+    can_unsubscribe: bool
+
+
+class CleanupOut(BaseModel):
+    total_count: int
+    total_size: int
+    senders: list[CleanupSender]
+
+
+class CleanupTarget(BaseModel):
+    account_id: int
+    email: str = Field(max_length=254)
+
+
+class CleanupRequest(BaseModel):
+    senders: list[CleanupTarget] = Field(min_length=1, max_length=200)
+    # Only mail older than this many days; None means all of it.
+    older_than_days: int | None = Field(default=None, ge=1, le=3650)
+
+
+class CleanupResult(BaseModel):
+    trashed: int
+    # Accounts whose provider refused; their mail was left as it was.
+    failed: list[str] = []

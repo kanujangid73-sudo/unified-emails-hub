@@ -169,3 +169,14 @@ def test_full_sync_through_the_engine(session):
     assert result.deleted_messages == 1
     assert "t2" not in {t.remote_id for t in session.exec(select(Thread)).all()}  # empty thread removed
     assert json.loads(account.sync_cursor) == {"history": "2000"}
+
+
+def test_trash_and_size():
+    fake = FakeGmail()
+    sample(fake)
+    fake.messages["m1"]["sizeEstimate"] = 5120
+    sizes = {m.remote_id: m.size for b in collect(provider_for(fake))[0] for m in b.messages}
+    assert sizes["m1"] == 5120
+
+    provider_for(fake).trash(["m1", "gone"])  # an already deleted message is skipped
+    assert fake.trashed == ["m1"]

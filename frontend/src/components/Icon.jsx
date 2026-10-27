@@ -4,6 +4,7 @@ const PATHS = {
   unread: "M3 6h18v12H3zM3 7l9 6 9-6",
   star: "m12 3 2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z",
   archive: "M3 4h18v4H3zM5 8v12h14V8M10 12h4",
+  trash: "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6",
   all: "M4 6h16M4 12h16M4 18h16",
   search: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM21 21l-5-5",
   sync: "M20 11a8 8 0 0 0-14.9-3M4 4v4h4M4 13a8 8 0 0 0 14.9 3M20 20v-4h-4",

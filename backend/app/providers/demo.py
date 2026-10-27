@@ -55,6 +55,9 @@ class DemoProvider(MailProvider):
         # The hub keeps the change in its own database, as it does for every provider.
         return None
 
+    def trash(self, message_remote_ids: list[str]) -> None:
+        return None  # nothing to delete remotely; the hub removes its copy
+
     def fetch_attachment(self, message_remote_id: str, ref: str) -> bytes:
         for message in self.mailbox:
             if message.remote_id == message_remote_id:

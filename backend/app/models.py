@@ -8,7 +8,7 @@ unified inbox can be listed with one indexed query.
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, Index, Text, UniqueConstraint
+from sqlalchemy import Column, DateTime, Index, Integer, Text, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
@@ -113,6 +113,8 @@ class Message(SQLModel, table=True):
     # The List-Unsubscribe header (RFC 2369): how to leave a mailing list.
     list_unsubscribe: str = Field(default="", sa_column=Column(Text, nullable=False, server_default=""))
     sent_at: datetime = Field(sa_column=_timestamp(nullable=False))
+    # Bytes in the mailbox (estimated from the content when the provider doesn't say).
+    size: int = Field(default=0, sa_column=Column(Integer, nullable=False, server_default="0"))
 
 
 class Attachment(SQLModel, table=True):

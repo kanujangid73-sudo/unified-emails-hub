@@ -88,6 +88,7 @@ class FakeGmail:
         self.requests: list[httpx.Request] = []
         self.modified: list[tuple[str, dict]] = []
         self.sent: list[dict] = []
+        self.trashed: list[str] = []
         self.unauthorized_once = False
 
     def add(self, *messages: dict) -> None:
@@ -121,6 +122,11 @@ class FakeGmail:
         if path == "/messages/send":
             self.sent.append(json.loads(request.content))
             return httpx.Response(200, json={"id": "sent-1", "threadId": "t-1"})
+        if match := re.fullmatch(r"/messages/([\w-]+)/trash", path):
+            if self.messages.pop(match.group(1), None) is None:
+                return httpx.Response(404, json={"error": {"message": "not found"}})
+            self.trashed.append(match.group(1))
+            return httpx.Response(200, json={"id": match.group(1), "labelIds": ["TRASH"]})
         if match := re.fullmatch(r"/messages/([\w-]+)", path):
             message = self.messages.get(match.group(1))
             return httpx.Response(200, json=message) if message else httpx.Response(404, json={"error": {"message": "not found"}})
@@ -259,7 +265,7 @@ def rfc822(subject, sender="Neha Kapoor <neha@oldmail.example>", body="Hello!", 
 
 
 class FakeImap:
-    """Enough of imaplib.IMAP4 for ImapProvider: SELECT, UID SEARCH/FETCH/STORE."""
+    """Enough of imaplib.IMAP4 for ImapProvider: SELECT, LIST, EXPUNGE, UID SEARCH/FETCH/STORE/MOVE/COPY."""
 
     def __init__(self, validity: str = "7") -> None:
         self.validity = validity
@@ -267,6 +273,20 @@ class FakeImap:
         self.stores: list[tuple[str, str, str]] = []
         self.readonly: list[bool] = []
         self.logged_out = 0
+        self.capabilities = ("IMAP4REV1", "MOVE")
+        self.folders = [b'(\\HasNoChildren) "/" "INBOX"', b'(\\HasNoChildren \\Trash) "/" "[Gmail]/Trash"']
+        self.moved: list[tuple[int, str]] = []  # (uid, folder), by MOVE or COPY
+        self.expunged = 0
+
+    def list(self):
+        return "OK", list(self.folders)
+
+    def expunge(self):
+        gone = [uid for uid, item in self.mail.items() if "\\Deleted" in item["flags"]]
+        for uid in gone:
+            del self.mail[uid]
+        self.expunged += 1
+        return "OK", [str(uid).encode() for uid in gone]
 
     def add(self, uid: int, raw: bytes, flags=()) -> None:
         self.mail[uid] = {"flags": set(flags), "raw": raw}
@@ -323,6 +343,13 @@ class FakeImap:
             for uid in self._uids(spec):
                 flag = flags.strip("()")
                 (self.mail[uid]["flags"].add if op == "+FLAGS" else self.mail[uid]["flags"].discard)(flag)
+            return "OK", [b""]
+        if command in ("MOVE", "COPY"):
+            spec, folder = args
+            for uid in self._uids(spec):
+                self.moved.append((uid, folder))
+                if command == "MOVE":
+                    del self.mail[uid]
             return "OK", [b""]
         raise AssertionError(f"unexpected IMAP command {command}")
 

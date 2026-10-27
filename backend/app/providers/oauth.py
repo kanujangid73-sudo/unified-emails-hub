@@ -50,7 +50,8 @@ def oauth_app(provider: str) -> OAuthApp | None:
             # Read, label (read/star/archive) and send. Never permanent deletion.
             scopes=("https://www.googleapis.com/auth/gmail.modify",),
             # offline + consent: always return a refresh token, even when reconnecting.
-            extra_auth_params={"access_type": "offline", "prompt": "consent", "include_granted_scopes": "true"},
+            # select_account: let people signed in to several Google accounts pick which to add.
+            extra_auth_params={"access_type": "offline", "prompt": "select_account consent", "include_granted_scopes": "true"},
             revoke_url="https://oauth2.googleapis.com/revoke",
         )
     if provider == "outlook" and settings.microsoft_client_id and settings.microsoft_client_secret:

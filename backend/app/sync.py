@@ -118,8 +118,15 @@ def _store_message(session: Session, account: MailAccount, thread: Thread, remot
     message.references_header = remote.references
     message.list_unsubscribe = remote.list_unsubscribe
     message.sent_at = as_utc(remote.sent_at)
+    message.size = remote.size or estimate_size(remote)
     session.add(message)
     return message
+
+
+def estimate_size(remote: RemoteMessage) -> int:
+    """Roughly what a message takes up, for providers that don't report sizes. Attachments are
+    stored base64-encoded, a third bigger than the files."""
+    return len(remote.body_text) + len(remote.body_html) + sum(a.size for a in remote.attachments) * 4 // 3
 
 
 def _from_owner(remote: RemoteMessage, account: MailAccount) -> bool:

@@ -51,6 +51,7 @@ export default function Sidebar({ accounts, view, onView, user, onLogout, open, 
         {[
           ["finder", "Account Finder", "finder"],
           ["subscriptions", "Subscriptions", "subs"],
+          ["cleanup", "Clean up", "trash"],
         ].map(([key, label, icon]) => (
           <button
             key={key}

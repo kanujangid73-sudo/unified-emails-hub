@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from . import ai, scheduler
 from .config import settings
 from .database import init_db
-from .routers import accounts, attachments, auth, insights, messages, oauth, threads
+from .routers import accounts, attachments, auth, cleanup, insights, messages, oauth, threads
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s:     %(message)s")
 
@@ -49,6 +49,7 @@ app.include_router(threads.router)
 app.include_router(messages.router)
 app.include_router(insights.router)
 app.include_router(attachments.router)
+app.include_router(cleanup.router)
 
 
 @app.get("/api/health", tags=["health"])

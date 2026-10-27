@@ -5,6 +5,7 @@ import AuthScreen from "./components/AuthScreen.jsx";
 import ComposeDialog from "./components/ComposeDialog.jsx";
 import Icon from "./components/Icon.jsx";
 import Sidebar, { FOLDERS } from "./components/Sidebar.jsx";
+import Cleanup from "./components/Cleanup.jsx";
 import Subscriptions from "./components/Subscriptions.jsx";
 import ThreadList from "./components/ThreadList.jsx";
 import ThreadView from "./components/ThreadView.jsx";
@@ -60,7 +61,7 @@ function Mailbox({ token, user, onLogout }) {
   const [accounts, setAccounts] = useState([]);
   const [accountsLoaded, setAccountsLoaded] = useState(false);
   const [view, setView] = useState({ folder: "inbox", accountId: null, category: null });
-  const [tool, setTool] = useState(null); // "finder" | "subscriptions" | null
+  const [tool, setTool] = useState(null); // "finder" | "subscriptions" | "cleanup" | null
   const [aiProvider, setAiProvider] = useState("offline");
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
@@ -396,6 +397,9 @@ function Mailbox({ token, user, onLogout }) {
       {tool === "finder" && <AccountFinder call={call} accounts={accounts} onOpenThread={openFromTool} onBack={() => setTool(null)} />}
       {tool === "subscriptions" && (
         <Subscriptions call={call} notify={notify} onShowSender={showSender} onChanged={refreshAll} onBack={() => setTool(null)} />
+      )}
+      {tool === "cleanup" && (
+        <Cleanup call={call} accounts={accounts} notify={notify} onShowSender={showSender} onChanged={refreshAll} onBack={() => setTool(null)} />
       )}
 
       <section className="list-pane" hidden={Boolean(tool)}>
