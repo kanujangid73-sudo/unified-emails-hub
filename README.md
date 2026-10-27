@@ -50,6 +50,9 @@ Every company and person in the demo is fictional.
 - **Inbox tabs**: Primary, Updates, Promotions, Newsletters, sorted automatically.
 - **Subscriptions**: every newsletter and promotion sender, how many you actually open, a
   one-click unsubscribe link and "archive all".
+- **Clean up**: senders ranked by how much space their mail takes and how much of it you ever
+  opened. Pick the ones you don't need and move their mail (optionally only the old part) to the
+  real mailbox's Trash in one go. Starred mail is always kept.
 - **AI assistant** (Google Gemini, free tier): a one-line summary with to-dos for any
   conversation, and reply drafts you can steer ("say yes, I'll bring the bats"). Runs only when
   you click; without an API key the app falls back to built-in summaries and templates.
@@ -141,7 +144,7 @@ about 20× faster (measured on SQLite: 81 ms to 3.9 ms).
 | AI | Google Gemini (structured JSON output, retries, graceful offline fallback) |
 | Security | Fernet encryption with key rotation, DOMPurify + sandboxed iframes + CSP, SSRF guard, rate limits |
 | Database | Postgres with full-text search (tsvector + GIN) in production, SQLite for development |
-| Testing | 122 Pytest tests against fake Gmail, Graph, IMAP and Gemini servers (run on SQLite and Postgres), 18 Vitest tests |
+| Testing | 135 Pytest tests against fake Gmail, Graph, IMAP and Gemini servers (run on SQLite and Postgres), 20 Vitest tests |
 | CI | GitHub Actions on every push |
 
 ## Run it locally
@@ -182,3 +185,5 @@ To put it online for free (Render + Neon), follow [docs/DEPLOY.md](docs/DEPLOY.m
 - [x] **Attachments** for every provider: list, download on demand, send.
 - [ ] **Phase 4: Launch.** ~~Render Blueprint~~, ~~benchmarks~~, ~~CI auto-deploy~~; live
       deployment and [demo video](docs/DEMO_SCRIPT.md) to go.
+#   U n i f i e d _ e m a i l s _ h u b  
+ 
