@@ -304,7 +304,7 @@ class FakeImap:
     def logout(self):
         self.logged_out += 1
 
-    def _uids(self, spec: str) -> list[int]:
+    def _uids(self, spec: str) -> "list[int]":  # quoted: the list() method above shadows the builtin
         result = []
         for part in spec.split(","):
             if ":" in part:
