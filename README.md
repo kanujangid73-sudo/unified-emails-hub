@@ -13,6 +13,8 @@ without jumping between apps.
 ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
 ![Vite](https://img.shields.io/badge/Vite-646CFF?logo=vite&logoColor=white)
 
+<a href="https://mailhub-web-whmd.onrender.com"><img src="https://img.shields.io/badge/🌐_Live_demo-Open_the_app-6366F1?style=for-the-badge" alt="Open the live demo"></a>
+
 [**🚀 Quick start**](#-quick-start) · [**✨ Features**](#-features) · [**🔌 Connect accounts**](#-connect-your-real-email) · [**☁️ Deploy**](#️-put-it-online) · [**🔒 Privacy**](#-privacy--security)
 
 <br>
@@ -27,11 +29,13 @@ without jumping between apps.
 
 The built-in **demo** lets you explore everything safely:
 
-1. Start the app ([Quick start](#-quick-start) below), or open your hosted copy.
+1. Open the live app: **<https://mailhub-web-whmd.onrender.com>**, or run it on your own computer ([Quick start](#-quick-start) below).
 2. Click **Try the demo** on the sign-in screen.
 3. Explore **3 sample mailboxes** with about **170 messages**.
 
 > 💡 Everyone in the demo is fictional, and demo accounts are deleted automatically after 24 hours.
+>
+> ⏳ The live app runs on a free server that sleeps when nobody is using it, so the first visit can take up to a minute to load.
 
 ---
 
@@ -132,6 +136,13 @@ Go to the address shown in the terminal (usually **<http://localhost:5173>**) an
 Deploy the web app and API with the included **Render Blueprint**, using a free **Neon** Postgres database.
 
 📖 Follow the **[Render deployment guide](docs/DEPLOY.md)**.
+
+🌐 This project's own copy is live:
+
+| | Link |
+|---|---|
+| 🖥️ Web app | <https://mailhub-web-whmd.onrender.com> |
+| ⚙️ API health check | <https://mailhub-api-r3x8.onrender.com/api/health> |
 
 ---
 
